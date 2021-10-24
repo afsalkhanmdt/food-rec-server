@@ -47,7 +47,7 @@ app.get('/api/v1/recipe-list', async(_req, res) => {
 });
 
 app.get("/api/v1/category-list",async(_req,res)=>{
-  const categoryList = await db.selectData("foodcategory");
+  const categoryList = await db.selectData("catogory");
   res.send({
     status: true,
     data: categoryList
@@ -55,24 +55,40 @@ app.get("/api/v1/category-list",async(_req,res)=>{
 });
 
 app.post("/api/v1/create-recipe",authentication,async(req,res)=>{
-  const {name,catogory,incredians,description} = req.body;
-  await db.insertData("recipes",{
+  const {name,catogory,incredians,description,url} = req.body;
+  console.log(catogory)
+  await db.insertData("recipe",{
     name,
     category:catogory,
     ingredients	: incredians,
-    description
+    description,
+    imageId : url
   });
-  res.send({
-    status:true,
-    data:"Success"
-  })
+  // res.send({
+  //   status:true,
+  //   data:"Success"
+  // })
+  res.send({status: true, token: generateToken(url)});
+//   const insertedimageId = await db.insertData("recipe",{
+
+//     fields: [],
+//     filteringConditions: [
+//     ["imageId","=",url]
+//   ]
+                   
+// });
+
+// if(!insertedimageId){
+//   res.send({status: false, data: "Failed to add imageId"});
+//   return;
+// }
 })
 
 app.post('/api/v1/login', async(req, res) => {
   const{userName,password} = req.body;
 
   const User = await db.selectData("users",{
-    fields: [],
+    fields: [], 
     filteringConditions: [
       ["userName", "=" , userName]
     ]
@@ -202,7 +218,7 @@ app.post("/api/v1/signup/otp-verification",async(req,res)=>{
 });
 
 
-app.post('/api/v1/upload',authentication, (req, res) => {
+app.post('/api/v1/upload',authentication,async(req, res) => {
 
   if (!req.files || Object.keys(req.files).length === 0) {
     return res.status(400).send('No files were uploaded.');
@@ -215,8 +231,108 @@ app.post('/api/v1/upload',authentication, (req, res) => {
       return res.status(500).send(err);
 
     res.send({status: true, data:{url: uploadPath}});
+    
   });
+  
+  
 });
+
+
+app.post("/api/v1/forgotpassword",async(req,res)=>{
+  const{phone} = req.body;
+
+  const phoneData = await db.selectData("users",{
+    fields: [],
+    filteringConditions: [
+    ["phone","=",phone]
+    ]
+  }
+  );
+ 
+  if(!phoneData.length){
+    res.send({status: false, data: "NO phone number exist"});
+    return;
+  }
+
+  const otpResponce = await sendOtp(phone);
+
+  if(!otpResponce.status){
+    res.send({status: false, data: "Failed to sent otp"});
+    return;
+  }
+  const insertedOtpId = await db.insertData("otps",{
+    otp: otpResponce.otp,
+    phone
+    }
+  );
+
+  if(!insertedOtpId){
+    res.send({status: false, data: "Failed to connect to db"});
+    return;
+  }
+    res.send({status: true, data: " Succsess"});
+
+});
+  
+
+  
+app.post("/api/v1/forgotpassword/otp-verification",async(req,res)=>{
+  const {phone,otp} = req.body;
+  const otpData = await db.selectData("otps",{
+    fields: [],
+    filteringConditions: [
+    ["phone","=",phone]
+    ]
+  }
+  );
+  
+
+  if(!otpData.length){
+    res.send({status: false, data: "Otp does not exists"});
+    return;
+  }
+  
+  if(otpData[otpData.length - 1].otp != otp){
+    res.send({status: false, data: "Wrong Otp"});
+    return;
+  }
+  
+
+  await db.updateData("users",
+    { fields: {
+        status: true
+    }, filteringConditions: [
+        ["phone","=",phone]
+      ] 
+    }
+  ); 
+
+  
+  res.send({status: true, token: generateToken(phone)});
+
+});
+
+
+
+app.post("/api/v1/forgotpassword/password-reset",authentication,async(req,res)=>{
+  const{phone,password} = req.body;
+  const hashedPassword = await generateHash(password);
+
+await db.updateData("users",
+  { fields: {
+    password: hashedPassword
+  }, filteringConditions: [
+      ["phone","=",phone]
+    ] 
+  }
+);
+
+res.send({status: true, data: " Password updated successfully!"});
+
+});
+
+
+
 
 
 app.listen(port, () => {
